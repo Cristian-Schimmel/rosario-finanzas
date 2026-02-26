@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/process-news",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 8 * * *"
     }
   ],
   "functions": {
