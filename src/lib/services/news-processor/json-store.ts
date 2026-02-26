@@ -1,0 +1,347 @@
+/**
+ * News Store (Database-backed)
+ * Handles persistence of processed news using Prisma/PostgreSQL
+ * Drop-in replacement for the old JSON file store — same API surface.
+ * Works on Vercel serverless (no filesystem dependency).
+ */
+
+import { prisma } from '@/lib/db/prisma';
+import type { ProcessedNews, NewsStore } from './types';
+
+const STORE_VERSION = 1;
+
+// ─── helpers ───────────────────────────────────────────────────
+
+function articleToProcessed(row: {
+  id: string;
+  title: string;
+  header: string;
+  originalContent: string;
+  aiSummary: string;
+  aiKeyPoints: string[];
+  aiImageUrl: string | null;
+  sourceImageUrl: string | null;
+  sourceUrl: string;
+  sourceName: string;
+  sourceId: string;
+  category: string;
+  priority: number;
+  publishedAt: Date;
+  processedAt: Date;
+  isProcessed: boolean;
+  processingError: string | null;
+}): ProcessedNews {
+  return {
+    id: row.id,
+    title: row.title,
+    header: row.header,
+    originalContent: row.originalContent,
+    aiSummary: row.aiSummary,
+    aiKeyPoints: row.aiKeyPoints,
+    aiImageUrl: row.aiImageUrl ?? undefined,
+    sourceImageUrl: row.sourceImageUrl ?? undefined,
+    sourceUrl: row.sourceUrl,
+    sourceName: row.sourceName,
+    sourceId: row.sourceId,
+    category: row.category,
+    priority: row.priority,
+    publishedAt: row.publishedAt.toISOString(),
+    processedAt: row.processedAt.toISOString(),
+    isProcessed: row.isProcessed,
+    processingError: row.processingError ?? undefined,
+  };
+}
+
+/**
+ * Ensure the singleton ProcessedNewsStore row exists
+ */
+async function ensureStoreRow(): Promise<void> {
+  await prisma.processedNewsStore.upsert({
+    where: { id: 'singleton' },
+    update: {},
+    create: { id: 'singleton', version: STORE_VERSION, lastUpdated: new Date() },
+  });
+}
+
+// ─── public API (same surface as old json-store) ──────────────
+
+/**
+ * Read the news store from DB
+ */
+export async function readStore(): Promise<NewsStore> {
+  try {
+    await ensureStoreRow();
+    const meta = await prisma.processedNewsStore.findUnique({ where: { id: 'singleton' } });
+    const rows = await prisma.processedNewsArticle.findMany({
+      orderBy: { publishedAt: 'desc' },
+    });
+
+    const articles = rows.map(articleToProcessed);
+    console.log(`[DBStore] Loaded ${articles.length} articles from database`);
+
+    return {
+      version: meta?.version ?? STORE_VERSION,
+      lastUpdated: meta?.lastUpdated.toISOString() ?? new Date().toISOString(),
+      articles,
+    };
+  } catch (error) {
+    console.error('[DBStore] Error reading store:', error);
+    return { version: STORE_VERSION, lastUpdated: new Date().toISOString(), articles: [] };
+  }
+}
+
+/**
+ * Write the news store (update the lastUpdated timestamp)
+ */
+export async function writeStore(store: NewsStore): Promise<boolean> {
+  try {
+    await prisma.processedNewsStore.upsert({
+      where: { id: 'singleton' },
+      update: { lastUpdated: new Date(), version: store.version },
+      create: { id: 'singleton', version: store.version, lastUpdated: new Date() },
+    });
+    console.log(`[DBStore] Updated store timestamp`);
+    return true;
+  } catch (error) {
+    console.error('[DBStore] Error writing store:', error);
+    return false;
+  }
+}
+
+// ─── title dedup helpers ──────────────────────────────────────
+
+function normalizeTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+function areTitlesSimilar(titleA: string, titleB: string): boolean {
+  const stopWords = new Set(['el', 'la', 'los', 'las', 'de', 'del', 'en', 'y', 'a', 'un', 'una', 'que', 'por', 'para', 'con', 'se', 'su', 'al', 'es', 'lo', 'como', 'más', 'mas', 'pero', 'o', 'no', 'hoy', 'este', 'esta']);
+
+  const getWords = (t: string) => t
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !stopWords.has(w));
+
+  const wordsA = getWords(titleA);
+  const wordsB = getWords(titleB);
+  if (wordsA.length === 0 || wordsB.length === 0) return false;
+
+  const setB = new Set(wordsB);
+  const common = wordsA.filter(w => setB.has(w)).length;
+  const shorter = Math.min(wordsA.length, wordsB.length);
+  return (common / shorter) >= 0.7;
+}
+
+// ─── upsert / query ──────────────────────────────────────────
+
+/**
+ * Add or update articles in the store.
+ * Deduplicates by ID and by fuzzy title similarity.
+ */
+export async function upsertArticles(
+  newArticles: ProcessedNews[],
+  maxArticles: number = 30
+): Promise<NewsStore> {
+  // 1. Fetch existing articles from DB
+  const existingRows = await prisma.processedNewsArticle.findMany({
+    orderBy: { publishedAt: 'desc' },
+  });
+  const existing = existingRows.map(articleToProcessed);
+
+  // 2. Merge by ID (new overrides old)
+  const articleMap = new Map<string, ProcessedNews>();
+  for (const a of existing) articleMap.set(a.id, a);
+  for (const a of newArticles) articleMap.set(a.id, a);
+
+  // 3. Dedup by exact normalised title
+  const allArticles = Array.from(articleMap.values());
+  allArticles.sort((a, b) =>
+    new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+  );
+
+  const titleMap = new Map<string, ProcessedNews>();
+  for (const article of allArticles) {
+    const norm = normalizeTitle(article.title);
+    if (!titleMap.has(norm)) titleMap.set(norm, article);
+  }
+
+  // 4. Fuzzy similarity dedup
+  const uniqueArticles: ProcessedNews[] = [];
+  for (const article of Array.from(titleMap.values())) {
+    const isDup = uniqueArticles.some(ex => areTitlesSimilar(ex.title, article.title));
+    if (!isDup) {
+      uniqueArticles.push(article);
+    } else {
+      console.log(`[DBStore] Fuzzy-dedup removed: "${article.title.slice(0, 50)}..."`);
+    }
+  }
+
+  // 5. Sort and trim
+  uniqueArticles.sort((a, b) =>
+    new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+  );
+  const final = uniqueArticles.slice(0, maxArticles);
+
+  const dupsRemoved = allArticles.length - final.length;
+  if (dupsRemoved > 0) {
+    console.log(`[DBStore] Removed ${dupsRemoved} duplicate/excess articles`);
+  }
+
+  // 6. Write to DB in a transaction: clear + insert + update meta
+  const finalIds = new Set(final.map(a => a.id));
+
+  await prisma.$transaction(async (tx) => {
+    // Delete articles no longer in the final set
+    await tx.processedNewsArticle.deleteMany({
+      where: { id: { notIn: Array.from(finalIds) } },
+    });
+
+    // Upsert each article
+    for (const a of final) {
+      await tx.processedNewsArticle.upsert({
+        where: { id: a.id },
+        update: {
+          title: a.title,
+          header: a.header,
+          originalContent: a.originalContent,
+          aiSummary: a.aiSummary,
+          aiKeyPoints: a.aiKeyPoints,
+          aiImageUrl: a.aiImageUrl ?? null,
+          sourceImageUrl: a.sourceImageUrl ?? null,
+          sourceUrl: a.sourceUrl,
+          sourceName: a.sourceName,
+          sourceId: a.sourceId,
+          category: a.category,
+          priority: a.priority,
+          publishedAt: new Date(a.publishedAt),
+          processedAt: new Date(a.processedAt),
+          isProcessed: a.isProcessed,
+          processingError: a.processingError ?? null,
+        },
+        create: {
+          id: a.id,
+          title: a.title,
+          header: a.header,
+          originalContent: a.originalContent,
+          aiSummary: a.aiSummary,
+          aiKeyPoints: a.aiKeyPoints,
+          aiImageUrl: a.aiImageUrl ?? null,
+          sourceImageUrl: a.sourceImageUrl ?? null,
+          sourceUrl: a.sourceUrl,
+          sourceName: a.sourceName,
+          sourceId: a.sourceId,
+          category: a.category,
+          priority: a.priority,
+          publishedAt: new Date(a.publishedAt),
+          processedAt: new Date(a.processedAt),
+          isProcessed: a.isProcessed,
+          processingError: a.processingError ?? null,
+        },
+      });
+    }
+
+    // Update store metadata
+    await tx.processedNewsStore.upsert({
+      where: { id: 'singleton' },
+      update: { lastUpdated: new Date() },
+      create: { id: 'singleton', version: STORE_VERSION, lastUpdated: new Date() },
+    });
+  });
+
+  console.log(`[DBStore] Saved ${final.length} articles to database`);
+
+  return {
+    version: STORE_VERSION,
+    lastUpdated: new Date().toISOString(),
+    articles: final,
+  };
+}
+
+export async function getProcessedArticles(): Promise<ProcessedNews[]> {
+  const rows = await prisma.processedNewsArticle.findMany({
+    orderBy: { publishedAt: 'desc' },
+  });
+  return rows.map(articleToProcessed);
+}
+
+export async function getArticleById(id: string): Promise<ProcessedNews | null> {
+  const row = await prisma.processedNewsArticle.findUnique({ where: { id } });
+  return row ? articleToProcessed(row) : null;
+}
+
+export async function getArticlesByCategory(category: string): Promise<ProcessedNews[]> {
+  const rows = await prisma.processedNewsArticle.findMany({
+    where: { category: { equals: category, mode: 'insensitive' } },
+    orderBy: { publishedAt: 'desc' },
+  });
+  return rows.map(articleToProcessed);
+}
+
+export async function isArticleProcessed(id: string): Promise<boolean> {
+  const row = await prisma.processedNewsArticle.findUnique({
+    where: { id },
+    select: { isProcessed: true },
+  });
+  return row?.isProcessed ?? false;
+}
+
+export async function getStoreInfo(): Promise<{
+  articleCount: number;
+  lastUpdated: string;
+  version: number;
+  isStale: boolean;
+  staleMinutes: number;
+}> {
+  const store = await readStore();
+  const { isStale, minutesOld } = checkStaleness(store);
+  return {
+    articleCount: store.articles.length,
+    lastUpdated: store.lastUpdated,
+    version: store.version,
+    isStale,
+    staleMinutes: minutesOld,
+  };
+}
+
+const MAX_STALE_MINUTES = 30;
+
+export function checkStaleness(store: NewsStore): { isStale: boolean; minutesOld: number } {
+  const lastUpdated = new Date(store.lastUpdated).getTime();
+  const now = Date.now();
+  const minutesOld = Math.floor((now - lastUpdated) / (1000 * 60));
+  return { isStale: minutesOld >= MAX_STALE_MINUTES, minutesOld };
+}
+
+export async function isStoreStale(): Promise<{ stale: boolean; minutesOld: number; lastUpdated: string }> {
+  const store = await readStore();
+  const { isStale, minutesOld } = checkStaleness(store);
+  return { stale: isStale, minutesOld, lastUpdated: store.lastUpdated };
+}
+
+export async function purgeOldArticles(maxAgeHours: number = 48): Promise<number> {
+  const cutoff = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000);
+  const result = await prisma.processedNewsArticle.deleteMany({
+    where: { publishedAt: { lt: cutoff } },
+  });
+  if (result.count > 0) {
+    console.log(`[DBStore] Purged ${result.count} articles older than ${maxAgeHours}h`);
+  }
+  return result.count;
+}
+
+export async function clearStore(): Promise<void> {
+  await prisma.processedNewsArticle.deleteMany();
+  await prisma.processedNewsStore.upsert({
+    where: { id: 'singleton' },
+    update: { lastUpdated: new Date() },
+    create: { id: 'singleton', version: STORE_VERSION, lastUpdated: new Date() },
+  });
+  console.log('[DBStore] Store cleared');
+}

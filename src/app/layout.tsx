@@ -1,0 +1,77 @@
+import type { Metadata } from 'next';
+import { Inter, JetBrains_Mono } from 'next/font/google';
+import '@/styles/globals.css';
+import { TooltipProvider } from '@/components/ui/tooltip';
+
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-mono',
+});
+
+export const metadata: Metadata = {
+  title: {
+    default: 'Rosario Finanzas - Indicadores Económicos en Tiempo Real',
+    template: '%s | Rosario Finanzas',
+  },
+  description:
+    'Portal de finanzas para Rosario y zona. Cotizaciones del dólar, inflación, tasas, mercados, commodities y noticias económicas actualizadas.',
+  keywords: [
+    'dólar',
+    'cotización',
+    'inflación',
+    'tasas',
+    'Rosario',
+    'Argentina',
+    'finanzas',
+    'economía',
+    'Merval',
+    'riesgo país',
+  ],
+  authors: [{ name: 'Rosario Finanzas' }],
+  creator: 'Rosario Finanzas',
+  openGraph: {
+    type: 'website',
+    locale: 'es_AR',
+    url: 'https://rosariofinanzas.com.ar',
+    siteName: 'Rosario Finanzas',
+    title: 'Rosario Finanzas - Indicadores Económicos en Tiempo Real',
+    description:
+      'Portal de finanzas para Rosario y zona. Cotizaciones, indicadores y noticias económicas.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Rosario Finanzas',
+    description: 'Indicadores económicos en tiempo real para Rosario y zona.',
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html
+      lang="es-AR"
+      className={`${inter.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="min-h-screen bg-bg-primary font-sans antialiased">
+        <TooltipProvider delayDuration={200}>
+          {children}
+        </TooltipProvider>
+      </body>
+    </html>
+  );
+}
