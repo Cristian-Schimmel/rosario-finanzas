@@ -42,17 +42,17 @@ export function Header() {
       </div>
       
       <div className="max-w-7xl mx-auto px-4">
-        <div className="flex items-center justify-between h-20 md:h-24">
+        <div className="flex items-center justify-between h-12 md:h-14">
           {/* Logo con RF monogram + imagen */}
-          <Link href="/" className="flex items-center gap-3 group flex-1 min-w-0">
+          <Link href="/" className="flex items-center gap-2 group flex-1 min-w-0">
             {/* RF Monogram */}
-            <div className="flex items-center justify-center h-14 w-14 md:h-[4.5rem] md:w-[4.5rem] rounded-lg bg-gradient-to-br from-blue-700 via-blue-600 to-cyan-500 dark:from-blue-600 dark:via-blue-500 dark:to-cyan-400 shadow-lg group-hover:shadow-xl transition-shadow duration-300 flex-shrink-0">
-              <span className="text-white font-extrabold text-[2.2rem] md:text-[3.2rem] tracking-tight leading-none" style={{ fontFamily: "'Georgia', 'Times New Roman', serif", letterSpacing: '-0.07em' }}>
+            <div className="flex items-center justify-center h-9 w-9 md:h-10 md:w-10 rounded-md bg-gradient-to-br from-blue-700 via-blue-600 to-cyan-500 dark:from-blue-600 dark:via-blue-500 dark:to-cyan-400 shadow-md group-hover:shadow-lg transition-shadow duration-300 flex-shrink-0">
+              <span className="text-white font-extrabold text-lg md:text-xl tracking-tight leading-none" style={{ fontFamily: "'Georgia', 'Times New Roman', serif", letterSpacing: '-0.07em' }}>
                 RF
               </span>
             </div>
             {/* Logo image */}
-            <div className="relative h-16 md:h-20 flex-1 p-1 dark:bg-white/70">
+            <div className="relative h-9 md:h-11 flex-1 p-0.5 dark:bg-white/70 rounded">
               <Image
                 src="/banners/Rosario%20Finanzas%20Logo.png"
                 alt="Rosario Finanzas"
@@ -64,9 +64,9 @@ export function Header() {
           </Link>
 
           {/* Center - Tagline + Date/Time/Weather - solo desktop */}
-          <div className="hidden lg:flex flex-col items-start gap-1 border-l border-border-muted dark:border-slate-700 pl-4">
-            <span className="text-sm text-text-muted dark:text-slate-400">
-              El Portal de Economía y Finanzas más importante de la región
+          <div className="hidden lg:flex items-center gap-3 border-l border-border-muted dark:border-slate-700 pl-4">
+            <span className="text-xs text-text-muted dark:text-slate-400 leading-tight">
+              El Portal de Economía y Finanzas<br />más importante de la región
             </span>
             <WeatherDateTime />
           </div>

@@ -53,7 +53,7 @@ export function BannerAd({
 export function HeroBanner({ className }: { className?: string }) {
   return (
     <div className={cn(
-      'w-full flex justify-center py-3',
+      'w-full flex justify-center py-1',
       'bg-surface-primary dark:bg-surface-primary',
       'border-b border-border-muted',
       className
@@ -64,7 +64,7 @@ export function HeroBanner({ className }: { className?: string }) {
         href="https://magicbrain.com.ar"
         width={1000}
         height={150}
-        className="shadow-md"
+        className="shadow-md max-h-[60px]"
         priority
       />
     </div>
