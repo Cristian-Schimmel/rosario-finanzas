@@ -232,27 +232,40 @@ export async function checkArticleRelevanceWithAI(
   }
 
   const prompt = `
-Eres el Editor en Jefe de "Rosario Finanzas", un portal estrictamente dedicado a:
-- Mercados financieros y bursátiles (Merval, Wall Street, Bonos, Acciones)
-- Economía macro y micro (Inflación, PBI, Tasas, Dólar)
-- Agronegocios y mercado de granos (Soja, Trigo, Exportaciones)
-- Criptomonedas y tecnología financiera
-- Empresas que cotizan en bolsa o grandes negocios
+Eres un editor de "Rosario Finanzas", un portal de noticias financieras y económicas de Argentina.
 
-Evalúa la siguiente noticia y determina si es RELEVANTE para el portal.
-RECHAZA (responde FALSE) si es:
-- Noticias policiales o crímenes (ej: "robo de dólares", "estafas", "narcotráfico")
-- Política partidaria sin impacto económico directo
-- Deportes, espectáculos, clima general o interés general
-- Noticias de consumo general sin análisis económico
-- Accidentes, tragedias o eventos locales sin impacto financiero
+Tu trabajo es SIMPLE: decidir si esta noticia tiene relación con finanzas, economía, mercados, agro o negocios.
+
+ACEPTA (TRUE) si la noticia trata sobre CUALQUIERA de estos temas:
+- Dólar, cotizaciones, tipo de cambio, divisas, monedas
+- Inflación, precios, costo de vida, tarifas, salarios, paritarias
+- Bolsa, acciones, bonos, inversiones, Merval, Wall Street
+- BCRA, tasas de interés, política monetaria, reservas
+- Comercio exterior, exportaciones, importaciones, retenciones, aranceles
+- Agro: soja, trigo, maíz, granos, cosecha, campo, ganadería como negocio
+- Criptomonedas, Bitcoin, blockchain, exchanges
+- Empresas, negocios, industria, comercio, emprendimientos
+- Presupuesto, impuestos, recaudación, deuda, déficit, superávit
+- Energía como sector económico (petróleo, gas, Vaca Muerta, litio)
+- Finanzas personales (ahorro, créditos, plazo fijo, billeteras virtuales)
+- Economía regional (Rosario, Santa Fe, puertos, agroindustria)
+- Cualquier política gubernamental con IMPACTO ECONÓMICO directo
+
+RECHAZA (FALSE) SOLO si la noticia es CLARAMENTE sobre:
+- Deportes (fútbol, básquet, tenis, etc.)
+- Farándula, espectáculos, TV, cine, música
+- Policiales, crímenes, accidentes sin impacto económico
+- Clima/meteorología sin afectación a mercados
+- Salud/medicina sin impacto económico
+- Astrología, horóscopos, efemérides
+
+IMPORTANTE: En caso de DUDA, acepta la noticia (TRUE). Es preferible incluir una noticia borderline que perder una relevante.
 
 TÍTULO: ${title}
 BAJADA: ${excerpt}
-CATEGORÍA: ${category}
+CATEGORÍA ASIGNADA: ${category}
 
-Responde ÚNICAMENTE con un JSON válido con este formato:
-{"isRelevant": true, "reason": "breve justificación"}
+Responde SOLO con JSON: {"isRelevant": true, "reason": "justificación breve"}
 `;
 
   try {

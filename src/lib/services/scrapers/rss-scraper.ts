@@ -22,9 +22,13 @@ const PRIORITY_KEYWORDS = {
   finanzas: ['merval', 'bolsa', 'acciones', 'bonos', 'riesgo país', 'dólar', 'inflación', 'bcra', 'economia'],
 };
 
-// RSS feeds for Argentine financial news - EXPANDED
+// RSS feeds for Argentine financial news
+// ONLY section-specific feeds (Economía, Finanzas, Negocios, Agro, Cripto)
+// Never use general/homepage feeds to avoid irrelevant content
 export const RSS_FEEDS: RSSFeedConfig[] = [
-  // === PRIORITY 9: Agro specialized (Working) ===
+  // =====================================================
+  // AGRO SPECIALIZED (already section-specific)
+  // =====================================================
   {
     source: {
       id: 'infocampo',
@@ -64,12 +68,27 @@ export const RSS_FEEDS: RSSFeedConfig[] = [
     priority: 9,
     keywords: [...PRIORITY_KEYWORDS.agro, ...PRIORITY_KEYWORDS.rosario],
   },
-
-  // === PRIORITY 8: National Economy/Finance (Working) ===
   {
     source: {
-      id: 'ambito',
-      name: 'Ámbito Financiero',
+      id: 'clarin-rural',
+      name: 'Clarín Rural',
+      baseUrl: 'https://www.clarin.com',
+      category: 'agro',
+      enabled: true,
+    },
+    feedUrl: 'https://www.clarin.com/rss/rural/',
+    category: 'Agro',
+    priority: 8,
+    keywords: PRIORITY_KEYWORDS.agro,
+  },
+
+  // =====================================================
+  // ÁMBITO FINANCIERO — Secciones: Economía, Finanzas, Negocios
+  // =====================================================
+  {
+    source: {
+      id: 'ambito-economia',
+      name: 'Ámbito Economía',
       baseUrl: 'https://www.ambito.com',
       category: 'economia',
       enabled: true,
@@ -92,23 +111,23 @@ export const RSS_FEEDS: RSSFeedConfig[] = [
     priority: 8,
     keywords: PRIORITY_KEYWORDS.finanzas,
   },
-
-  // === PRIORITY 8: Clarín Rural - Agro focus (Working) ===
   {
     source: {
-      id: 'clarin-rural',
-      name: 'Clarín Rural',
-      baseUrl: 'https://www.clarin.com',
-      category: 'agro',
+      id: 'ambito-negocios',
+      name: 'Ámbito Negocios',
+      baseUrl: 'https://www.ambito.com',
+      category: 'economia',
       enabled: true,
     },
-    feedUrl: 'https://www.clarin.com/rss/rural/',
-    category: 'Agro',
-    priority: 8,
-    keywords: PRIORITY_KEYWORDS.agro,
+    feedUrl: 'https://www.ambito.com/rss/negocios.xml',
+    category: 'Economía',
+    priority: 7,
+    keywords: PRIORITY_KEYWORDS.finanzas,
   },
 
-  // === PRIORITY 7: Major national outlets (Working) ===
+  // =====================================================
+  // LA NACIÓN — Sección: Economía
+  // =====================================================
   {
     source: {
       id: 'lanacion-economia',
@@ -122,6 +141,10 @@ export const RSS_FEEDS: RSSFeedConfig[] = [
     priority: 7,
     keywords: PRIORITY_KEYWORDS.finanzas,
   },
+
+  // =====================================================
+  // CLARÍN — Sección: Economía
+  // =====================================================
   {
     source: {
       id: 'clarin-economia',
@@ -136,48 +159,122 @@ export const RSS_FEEDS: RSSFeedConfig[] = [
     keywords: PRIORITY_KEYWORDS.finanzas,
   },
 
-  // === PRIORITY 6: International with LatAm focus (Working) ===
+  // =====================================================
+  // EL CRONISTA — Secciones: Finanzas-Mercados, Economía-Política
+  // =====================================================
   {
     source: {
-      id: 'bloomberg-latam',
-      name: 'Bloomberg Línea',
-      baseUrl: 'https://www.bloomberglinea.com',
+      id: 'cronista-finanzas',
+      name: 'El Cronista Finanzas',
+      baseUrl: 'https://www.cronista.com',
       category: 'finanzas',
       enabled: true,
     },
-    feedUrl: 'https://www.bloomberglinea.com/arc/outboundfeeds/rss/?outputType=xml',
-    category: 'Mercados',
+    feedUrl: 'https://www.cronista.com/arc/outboundfeeds/rss/category/finanzas-mercados/?outputType=xml',
+    category: 'Finanzas',
+    priority: 7,
+    keywords: PRIORITY_KEYWORDS.finanzas,
+  },
+  {
+    source: {
+      id: 'cronista-economia',
+      name: 'El Cronista Economía',
+      baseUrl: 'https://www.cronista.com',
+      category: 'economia',
+      enabled: true,
+    },
+    feedUrl: 'https://www.cronista.com/arc/outboundfeeds/rss/category/economia-politica/?outputType=xml',
+    category: 'Economía',
     priority: 6,
     keywords: PRIORITY_KEYWORDS.finanzas,
   },
 
-  // === PRIORITY 5: Business specialized (Working) ===
+  // =====================================================
+  // iPROFESIONAL — Secciones: Economía, Finanzas, Negocios
+  // =====================================================
   {
     source: {
-      id: 'iprofesional',
-      name: 'iProfesional',
+      id: 'iprofesional-economia',
+      name: 'iProfesional Economía',
       baseUrl: 'https://www.iprofesional.com',
       category: 'economia',
       enabled: true,
     },
     feedUrl: 'https://www.iprofesional.com/rss/economia',
     category: 'Economía',
-    priority: 5,
+    priority: 6,
   },
   {
     source: {
-      id: 'cronista',
-      name: 'El Cronista',
-      baseUrl: 'https://www.cronista.com',
+      id: 'iprofesional-finanzas',
+      name: 'iProfesional Finanzas',
+      baseUrl: 'https://www.iprofesional.com',
       category: 'finanzas',
       enabled: true,
     },
-    feedUrl: 'https://www.cronista.com/arc/outboundfeeds/rss/',
+    feedUrl: 'https://www.iprofesional.com/rss/finanzas',
     category: 'Finanzas',
+    priority: 6,
+  },
+  {
+    source: {
+      id: 'iprofesional-negocios',
+      name: 'iProfesional Negocios',
+      baseUrl: 'https://www.iprofesional.com',
+      category: 'economia',
+      enabled: true,
+    },
+    feedUrl: 'https://www.iprofesional.com/rss/negocios',
+    category: 'Economía',
     priority: 5,
   },
 
-  // === PRIORITY 7: Crypto (Working) ===
+  // =====================================================
+  // BLOOMBERG LÍNEA — Secciones: Mercados, Economía, Negocios
+  // =====================================================
+  {
+    source: {
+      id: 'bloomberg-mercados',
+      name: 'Bloomberg Mercados',
+      baseUrl: 'https://www.bloomberglinea.com',
+      category: 'finanzas',
+      enabled: true,
+    },
+    feedUrl: 'https://www.bloomberglinea.com/arc/outboundfeeds/rss/category/mercados/?outputType=xml',
+    category: 'Mercados',
+    priority: 7,
+    keywords: PRIORITY_KEYWORDS.finanzas,
+  },
+  {
+    source: {
+      id: 'bloomberg-economia',
+      name: 'Bloomberg Economía',
+      baseUrl: 'https://www.bloomberglinea.com',
+      category: 'economia',
+      enabled: true,
+    },
+    feedUrl: 'https://www.bloomberglinea.com/arc/outboundfeeds/rss/category/economia/?outputType=xml',
+    category: 'Economía',
+    priority: 6,
+    keywords: PRIORITY_KEYWORDS.finanzas,
+  },
+  {
+    source: {
+      id: 'bloomberg-negocios',
+      name: 'Bloomberg Negocios',
+      baseUrl: 'https://www.bloomberglinea.com',
+      category: 'economia',
+      enabled: true,
+    },
+    feedUrl: 'https://www.bloomberglinea.com/arc/outboundfeeds/rss/category/negocios/?outputType=xml',
+    category: 'Economía',
+    priority: 5,
+    keywords: PRIORITY_KEYWORDS.finanzas,
+  },
+
+  // =====================================================
+  // CRIPTO (already specialized portals)
+  // =====================================================
   {
     source: {
       id: 'cointelegraph-es',
