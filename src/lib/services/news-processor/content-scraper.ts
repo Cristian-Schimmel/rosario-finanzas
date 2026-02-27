@@ -198,8 +198,8 @@ export async function scrapeArticleContent(url: string): Promise<ScrapedContent>
       };
     }
 
-    // Limit to ~3000 characters for AI processing
-    const limitedContent = content.slice(0, 3000);
+    // Limit to ~5000 characters for AI processing (enough for a full article)
+    const limitedContent = content.slice(0, 5000);
 
     console.log(`[ContentScraper] Extracted ${limitedContent.length} chars from ${domain}${imageUrl ? ' + image' : ''}`);
 

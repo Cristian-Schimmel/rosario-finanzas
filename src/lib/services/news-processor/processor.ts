@@ -13,12 +13,13 @@
 
 import { scraperManager } from '../scrapers';
 import { scrapeArticleContent } from './content-scraper';
-import { generateAISummary, isAIAvailable } from './ai-summarizer';
+import { generateAISummary, isAIAvailable, checkArticleRelevanceWithAI } from './ai-summarizer';
 import { 
   upsertArticles, 
   getProcessedArticles, 
   isArticleProcessed,
-  getStoreInfo 
+  getStoreInfo,
+  areTitlesSimilar
 } from './json-store';
 import type { ProcessedNews, ProcessingResult } from './types';
 import type { ScrapedArticle } from '../scrapers/types';
@@ -29,7 +30,7 @@ const CONFIG = {
   batchSize: 5,
   delayBetweenBatches: 2000,
   maxContentRetries: 2,
-  maxArticleAgeHours: 48, // Discard articles older than 48 hours
+  maxArticleAgeHours: 72, // Discard articles older than 3 days
 };
 
 // ============================================================
@@ -201,10 +202,10 @@ const RELEVANCE_KEYWORDS = {
  * Check if an article is relevant to a finance/economy portal.
  * THREE-STEP FILTER:
  * 1. Reject if contains exclusion keywords
- * 2. Reject if too old (>48h)
+ * 2. Reject if too old (>72h / 3 days)
  * 3. REQUIRE at least one finance keyword (no exceptions)
  */
-function isArticleRelevant(article: ScrapedArticle): boolean {
+export function isArticleRelevant(article: ScrapedArticle): boolean {
   const text = `${article.title} ${article.excerpt}`.toLowerCase();
   
   // STEP 1: Hard exclude — always reject these topics
@@ -215,7 +216,7 @@ function isArticleRelevant(article: ScrapedArticle): boolean {
     }
   }
   
-  // STEP 2: Age check — reject articles older than 48 hours
+  // STEP 2: Age check — reject articles older than 3 days
   const articleAge = Date.now() - article.publishedAt.getTime();
   const maxAge = CONFIG.maxArticleAgeHours * 60 * 60 * 1000;
   if (articleAge > maxAge) {
@@ -334,6 +335,23 @@ async function processArticle(article: ScrapedArticle): Promise<ProcessedNews> {
   };
 
   try {
+    // Step 0: AI Relevance Check (Semantic Filter)
+    if (isAIAvailable()) {
+      const relevance = await checkArticleRelevanceWithAI(
+        article.title,
+        article.excerpt,
+        article.category
+      );
+      
+      if (!relevance.isRelevant) {
+        console.log(`[NewsProcessor] 🤖 AI Rejected: "${article.title.slice(0, 50)}..." Reason: ${relevance.reason}`);
+        processed.processingError = `AI Rejected: ${relevance.reason}`;
+        // Mark as processed so we don't retry it, but it will be filtered out by getProcessedArticles
+        processed.isProcessed = true; 
+        return processed; // Skip further processing
+      }
+    }
+
     // Step 1: Scrape full content and og:image
     let fullContent = '';
     let scrapedImageUrl: string | undefined;
@@ -374,6 +392,15 @@ async function processArticle(article: ScrapedArticle): Promise<ProcessedNews> {
       if (summaryResult.success) {
         processed.aiSummary = summaryResult.summary;
         processed.aiKeyPoints = summaryResult.keyPoints;
+        
+        // Use AI cleaned title and excerpt if available
+        if (summaryResult.cleanTitle) {
+          processed.title = summaryResult.cleanTitle;
+        }
+        if (summaryResult.cleanExcerpt) {
+          processed.header = summaryResult.cleanExcerpt;
+        }
+        
         processed.isProcessed = true;
         console.log(`[NewsProcessor] ✅ AI summary generated (${Date.now() - startTime}ms)`);
       } else {
@@ -424,13 +451,29 @@ export async function processAllNews(): Promise<ProcessingResult> {
     const balancedArticles = balanceByCategory(relevantArticles, MAX_PER_CATEGORY);
     console.log(`[NewsProcessor] ${balancedArticles.length} after category balancing (max ${MAX_PER_CATEGORY}/cat)`);
 
-    // Step 3: Filter out already processed articles
+    // Step 3: Filter out already processed articles and fuzzy duplicates
     const newArticles: ScrapedArticle[] = [];
+    const existingArticles = await getProcessedArticles();
+    
     for (const article of balancedArticles) {
       const alreadyProcessed = await isArticleProcessed(article.id);
-      if (!alreadyProcessed) {
-        newArticles.push(article);
+      if (alreadyProcessed) continue;
+      
+      // Check for fuzzy duplicates against already processed articles
+      const isFuzzyDupExisting = existingArticles.some(ex => areTitlesSimilar(ex.title, article.title));
+      if (isFuzzyDupExisting) {
+        console.log(`[NewsProcessor] 🔄 Skipping duplicate (fuzzy match with existing): "${article.title.slice(0, 50)}..."`);
+        continue;
       }
+      
+      // Check for fuzzy duplicates within the current batch of new articles
+      const isFuzzyDupNew = newArticles.some(newArt => areTitlesSimilar(newArt.title, article.title));
+      if (isFuzzyDupNew) {
+        console.log(`[NewsProcessor] 🔄 Skipping duplicate (fuzzy match within batch): "${article.title.slice(0, 50)}..."`);
+        continue;
+      }
+      
+      newArticles.push(article);
     }
     console.log(`[NewsProcessor] ${newArticles.length} new articles to process`);
 
@@ -453,7 +496,10 @@ export async function processAllNews(): Promise<ProcessingResult> {
 
       for (const processed of batchResults) {
         processedArticles.push(processed);
-        if (processed.isProcessed) {
+        if (processed.processingError?.startsWith('AI Rejected')) {
+          // AI-rejected articles are saved but don't count as errors
+          console.log(`[NewsProcessor] 🤖 Filtered: ${processed.title.slice(0, 40)}...`);
+        } else if (processed.isProcessed) {
           result.processedCount++;
         } else {
           result.errorCount++;
@@ -469,13 +515,13 @@ export async function processAllNews(): Promise<ProcessingResult> {
       }
     }
 
-    // Step 6: Save to JSON store (new articles get merged, old ones fall off)
+    // Step 6: Always purge articles older than 3 days first
+    const { purgeOldArticles } = await import('./json-store');
+    await purgeOldArticles(CONFIG.maxArticleAgeHours);
+
+    // Step 7: Save new articles to DB (merge with existing, old ones fall off)
     if (processedArticles.length > 0) {
       await upsertArticles(processedArticles, CONFIG.maxArticles);
-    } else if (result.processedCount === 0 && newArticles.length === 0) {
-      // Even if no new articles, purge expired ones from store
-      const { purgeOldArticles } = await import('./json-store');
-      await purgeOldArticles(CONFIG.maxArticleAgeHours);
     }
 
     result.success = true;

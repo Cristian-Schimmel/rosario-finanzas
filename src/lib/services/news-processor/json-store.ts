@@ -110,7 +110,7 @@ export async function writeStore(store: NewsStore): Promise<boolean> {
 
 // ─── title dedup helpers ──────────────────────────────────────
 
-function normalizeTitle(title: string): string {
+export function normalizeTitle(title: string): string {
   return title
     .toLowerCase()
     .normalize('NFD')
@@ -119,7 +119,7 @@ function normalizeTitle(title: string): string {
     .trim();
 }
 
-function areTitlesSimilar(titleA: string, titleB: string): boolean {
+export function areTitlesSimilar(titleA: string, titleB: string): boolean {
   const stopWords = new Set(['el', 'la', 'los', 'las', 'de', 'del', 'en', 'y', 'a', 'un', 'una', 'que', 'por', 'para', 'con', 'se', 'su', 'al', 'es', 'lo', 'como', 'más', 'mas', 'pero', 'o', 'no', 'hoy', 'este', 'esta']);
 
   const getWords = (t: string) => t
@@ -187,7 +187,17 @@ export async function upsertArticles(
   uniqueArticles.sort((a, b) =>
     new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
   );
-  const final = uniqueArticles.slice(0, maxArticles);
+  
+  const validArticles = uniqueArticles.filter(a => !a.processingError?.startsWith('AI Rejected'));
+  const rejectedArticles = uniqueArticles.filter(a => a.processingError?.startsWith('AI Rejected'));
+  
+  const finalValid = validArticles.slice(0, maxArticles);
+  
+  // Keep rejected articles that are less than 3 days old so we don't retry them
+  const threeDaysAgo = Date.now() - 72 * 60 * 60 * 1000;
+  const finalRejected = rejectedArticles.filter(a => new Date(a.publishedAt).getTime() > threeDaysAgo);
+  
+  const final = [...finalValid, ...finalRejected];
 
   const dupsRemoved = allArticles.length - final.length;
   if (dupsRemoved > 0) {
@@ -266,6 +276,14 @@ export async function upsertArticles(
 
 export async function getProcessedArticles(): Promise<ProcessedNews[]> {
   const rows = await prisma.processedNewsArticle.findMany({
+    where: {
+      // Do not return articles that were explicitly rejected by AI
+      NOT: {
+        processingError: {
+          startsWith: 'AI Rejected',
+        },
+      },
+    },
     orderBy: { publishedAt: 'desc' },
   });
   return rows.map(articleToProcessed);
@@ -278,18 +296,26 @@ export async function getArticleById(id: string): Promise<ProcessedNews | null> 
 
 export async function getArticlesByCategory(category: string): Promise<ProcessedNews[]> {
   const rows = await prisma.processedNewsArticle.findMany({
-    where: { category: { equals: category, mode: 'insensitive' } },
+    where: { 
+      category: { equals: category, mode: 'insensitive' },
+      NOT: {
+        processingError: {
+          startsWith: 'AI Rejected',
+        },
+      },
+    },
     orderBy: { publishedAt: 'desc' },
   });
   return rows.map(articleToProcessed);
 }
 
 export async function isArticleProcessed(id: string): Promise<boolean> {
+  // Check if article exists in DB (both successfully processed AND AI-rejected)
   const row = await prisma.processedNewsArticle.findUnique({
     where: { id },
-    select: { isProcessed: true },
+    select: { id: true },
   });
-  return row?.isProcessed ?? false;
+  return row !== null;
 }
 
 export async function getStoreInfo(): Promise<{
@@ -325,7 +351,7 @@ export async function isStoreStale(): Promise<{ stale: boolean; minutesOld: numb
   return { stale: isStale, minutesOld, lastUpdated: store.lastUpdated };
 }
 
-export async function purgeOldArticles(maxAgeHours: number = 48): Promise<number> {
+export async function purgeOldArticles(maxAgeHours: number = 72): Promise<number> {
   const cutoff = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000);
   const result = await prisma.processedNewsArticle.deleteMany({
     where: { publishedAt: { lt: cutoff } },

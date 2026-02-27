@@ -8,7 +8,7 @@ import { cache } from './cache';
 import { prisma } from '@/lib/db/prisma';
 import { scraperManager } from './scrapers';
 import { generateNewsSummary, generateNewsImage, isAIAvailable } from './ai';
-import { getProcessedNews, type ProcessedNews } from './news-processor';
+import { getProcessedNews, isArticleRelevant, type ProcessedNews } from './news-processor';
 import type { ScrapedArticle } from './scrapers/types';
 
 // ============================================
@@ -206,9 +206,13 @@ async function fetchExternalArticles(): Promise<NewsArticle[]> {
     
     const scrapedArticles = await scraperManager.fetchAllNews();
     
-    if (scrapedArticles.length > 0) {
-      console.log(`[NewsService] Got ${scrapedArticles.length} live articles from RSS feeds`);
-      return scrapedArticles.map((article: ScrapedArticle) => ({
+    // Apply the same relevance filter used by the processor (exclusion + finance keywords)
+    const filteredArticles = scrapedArticles.filter(isArticleRelevant);
+    console.log(`[NewsService] Live RSS: ${scrapedArticles.length} raw → ${filteredArticles.length} after relevance filter`);
+    
+    if (filteredArticles.length > 0) {
+      console.log(`[NewsService] Got ${filteredArticles.length} relevant live articles from RSS feeds`);
+      return filteredArticles.map((article: ScrapedArticle) => ({
         id: article.id,
         title: article.title,
         excerpt: article.excerpt,

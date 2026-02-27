@@ -296,7 +296,9 @@ export class RSSScraper extends BaseScraper {
           const rssImageUrl = enclosure || mediaContent;
           const categoryImage = this.getDefaultImage();
           const cleanTitle = this.cleanText(title);
-          const cleanExcerpt = this.cleanText(description || '').substring(0, 200);
+          const rawExcerpt = this.cleanText(description || '');
+          // Truncate excerpt intelligently: at end of sentence or word boundary, not mid-word
+          const cleanExcerpt = this.smartTruncate(rawExcerpt, 300);
           const priorityScore = this.calculatePriorityScore(cleanTitle, cleanExcerpt);
           
           articles.push({
@@ -352,6 +354,28 @@ export class RSSScraper extends BaseScraper {
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'");
+  }
+
+  /**
+   * Truncate text at the nearest sentence or word boundary
+   */
+  private smartTruncate(text: string, maxLength: number): string {
+    if (text.length <= maxLength) return text;
+    
+    // Try to find the last sentence ending within maxLength
+    const trimmed = text.substring(0, maxLength);
+    const lastSentence = trimmed.lastIndexOf('. ');
+    if (lastSentence > maxLength * 0.5) {
+      return trimmed.substring(0, lastSentence + 1);
+    }
+    
+    // Fall back to last word boundary
+    const lastSpace = trimmed.lastIndexOf(' ');
+    if (lastSpace > maxLength * 0.5) {
+      return trimmed.substring(0, lastSpace) + '...';
+    }
+    
+    return trimmed + '...';
   }
 
   private getDefaultImage(): string {

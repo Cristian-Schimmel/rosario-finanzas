@@ -3,7 +3,6 @@ import { MainLayout } from '@/components/layout';
 import { NewsCard, NewsFeatured, NewsCardSkeleton } from '@/components/news/news-card';
 import { EditorialSection } from '@/components/news/editorial-section';
 import { ExternalNewsCard, ExternalNewsCardHorizontal } from '@/components/news/latest-news-section';
-import { ExternalNewsLive } from '@/components/news/external-news-live';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -29,7 +28,7 @@ import {
   Star,
 } from 'lucide-react';
 
-export const revalidate = 3600; // Revalidate every hour to match client refresh
+export const revalidate = 300; // Revalidate every 5 minutes for fresh news
 
 // Metadata
 export const metadata = {
@@ -38,42 +37,12 @@ export const metadata = {
 };
 
 // Types for Prisma queries
-type CategoryWithCount = {
-  id: string;
-  name: string;
-  slug: string;
-  _count: { articles: number };
-};
-
 type TagWithCount = {
   id: string;
   name: string;
   slug: string;
   _count: { articles: number };
 };
-
-async function getCategories(): Promise<CategoryWithCount[]> {
-  try {
-    return prisma.category.findMany({
-      include: {
-        _count: {
-          select: {
-            articles: {
-              where: {
-                status: 'PUBLISHED',
-              },
-            },
-          },
-        },
-      },
-      orderBy: {
-        name: 'asc',
-      },
-    }) as Promise<CategoryWithCount[]>;
-  } catch {
-    return [];
-  }
-}
 
 async function getPopularTags(): Promise<TagWithCount[]> {
   try {
@@ -109,22 +78,40 @@ export default async function NoticiasPage({
   const currentPage = parseInt(searchParams.pagina || '1', 10);
   const ITEMS_PER_PAGE = 15;
 
-  const [editorialArticles, allExternal, categories, popularTags] = await Promise.all([
+  const [editorialArticles, allExternal, popularTags] = await Promise.all([
     getEditorialNews(5),
     getExternalNews(100),
-    getCategories(),
     getPopularTags(),
   ]);
+
+  // Build real category list from actual external news articles
+  const newsCategoryMap = new Map<string, { name: string; slug: string; count: number }>();
+  for (const article of allExternal) {
+    if (article.category) {
+      const slug = article.category
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+      const existing = newsCategoryMap.get(slug);
+      if (existing) {
+        existing.count++;
+      } else {
+        newsCategoryMap.set(slug, { name: article.category, slug, count: 1 });
+      }
+    }
+  }
+  const newsCategories = Array.from(newsCategoryMap.values()).sort((a, b) => b.count - a.count);
 
   // Filter external articles by category, tag, or search query
   let filteredExternal = allExternal;
   
   if (activeCategory) {
-    const matchCat = categories.find(c => c.slug === activeCategory);
+    const matchCat = newsCategories.find(c => c.slug === activeCategory);
     if (matchCat) {
       filteredExternal = filteredExternal.filter(a => 
-        a.category?.toLowerCase() === matchCat.name.toLowerCase() ||
-        a.categorySlug === activeCategory
+        a.category?.toLowerCase() === matchCat.name.toLowerCase()
       );
     }
   }
@@ -187,14 +174,15 @@ export default async function NoticiasPage({
             <CategoryPill
               href="/noticias"
               label="Todas"
+              count={allExternal.length}
               active={!activeCategory}
             />
-            {categories.slice(0, 5).map((category) => (
+            {newsCategories.slice(0, 6).map((category) => (
               <CategoryPill
-                key={category.id}
+                key={category.slug}
                 href={`/noticias?categoria=${category.slug}`}
                 label={category.name}
-                count={category._count.articles}
+                count={category.count}
                 active={activeCategory === category.slug}
               />
             ))}
@@ -207,7 +195,7 @@ export default async function NoticiasPage({
             <Filter className="w-4 h-4 text-accent" />
             <span className="text-sm text-text-secondary">
               {searchQuery && <>Buscando: <strong>&quot;{searchQuery}&quot;</strong> · </>}
-              {activeCategory && <>Categoría: <strong>{categories.find(c => c.slug === activeCategory)?.name || activeCategory}</strong> · </>}
+              {activeCategory && <>Categoría: <strong>{newsCategories.find(c => c.slug === activeCategory)?.name || activeCategory}</strong> · </>}
               {activeTag && <>Tag: <strong>#{activeTag}</strong> · </>}
               {totalItems} resultado{totalItems !== 1 ? 's' : ''}
             </span>
@@ -315,36 +303,49 @@ export default async function NoticiasPage({
               </section>
             )}
 
-            {/* External News Section with Auto-Refresh */}
-            {!isFiltering ? (
-              <ExternalNewsLive initialArticles={paginatedExternal} />
-            ) : (
-              <section>
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                    <Newspaper className="w-4 h-4 text-white" />
+            {/* External News Section */}
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
+                    <Newspaper className="w-4 h-4 text-accent" />
                   </div>
-                  <h2 className="text-lg font-bold text-text-primary dark:text-white">
-                    Resultados
-                  </h2>
+                  <div>
+                    <h2 className="text-lg font-bold text-text-primary dark:text-white">
+                      {isFiltering ? 'Resultados' : 'Últimas Noticias'}
+                    </h2>
+                    <p className="text-xs text-text-muted">
+                      {isFiltering
+                        ? `${totalItems} resultado${totalItems !== 1 ? 's' : ''}`
+                        : 'Noticias de medios especializados'
+                      }
+                    </p>
+                  </div>
                 </div>
-                {paginatedExternal.length === 0 ? (
-                  <Card className="p-8 text-center">
-                    <Search className="w-8 h-8 text-text-muted mx-auto mb-3" />
-                    <p className="text-text-secondary">No se encontraron noticias con los filtros seleccionados.</p>
-                    <Link href="/noticias" className="text-sm text-accent hover:underline mt-2 inline-block">
-                      Ver todas las noticias
-                    </Link>
-                  </Card>
-                ) : (
-                  <div className="space-y-3">
-                    {paginatedExternal.map((article) => (
-                      <ExternalNewsCardHorizontal key={article.id} article={article} />
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
+              </div>
+
+              {paginatedExternal.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <Search className="w-8 h-8 text-text-muted mx-auto mb-3" />
+                  <p className="text-text-secondary">No se encontraron noticias con los filtros seleccionados.</p>
+                  <Link href="/noticias" className="text-sm text-accent hover:underline mt-2 inline-block">
+                    Ver todas las noticias
+                  </Link>
+                </Card>
+              ) : isFiltering ? (
+                <div className="space-y-3">
+                  {paginatedExternal.map((article) => (
+                    <ExternalNewsCardHorizontal key={article.id} article={article} />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {paginatedExternal.map((article) => (
+                    <ExternalNewsCard key={article.id} article={article} />
+                  ))}
+                </div>
+              )}
+            </section>
 
             {/* Pagination */}
             {totalPages > 1 && (
@@ -432,19 +433,19 @@ export default async function NoticiasPage({
             </Card>
 
             {/* Categories */}
-            {categories.length > 0 && (
+            {newsCategories.length > 0 && (
               <Card>
                 <CardHeader title="Categorías" />
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    {categories.map((category) => (
+                    {newsCategories.map((category) => (
                       <Link
-                        key={category.id}
+                        key={category.slug}
                         href={`/noticias?categoria=${category.slug}`}
                       >
                         <Badge variant="outline" size="sm" className="hover:bg-accent/10 transition-colors">
                           {category.name}
-                          <span className="ml-1 text-text-muted">({category._count.articles})</span>
+                          <span className="ml-1 text-text-muted">({category.count})</span>
                         </Badge>
                       </Link>
                     ))}

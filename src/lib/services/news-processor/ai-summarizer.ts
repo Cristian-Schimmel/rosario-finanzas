@@ -7,6 +7,8 @@ const GEMINI_API_KEY = process.env.GOOGLE_AI_API_KEY;
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 interface SummaryResult {
+  cleanTitle?: string;
+  cleanExcerpt?: string;
   summary: string;
   keyPoints: string[];
   success: boolean;
@@ -66,11 +68,16 @@ ${contentToAnalyze}
 
 ## TU TAREA:
 
-Genera un resumen CONCISO pero completo de esta noticia. NO repitas textualmente el título ni la bajada. El lector debe entender la noticia sin necesidad de ir a la fuente original.
+1. Corrige el título si está cortado o mal formateado.
+2. Genera una "bajada" (excerpt) limpia, de 1 o 2 oraciones, que resuma la noticia sin cortarse.
+3. Genera un resumen CONCISO pero completo de esta noticia. NO repitas textualmente el título ni la bajada. El lector debe entender la noticia sin necesidad de ir a la fuente original.
+4. Extrae los puntos clave.
 
 ## FORMATO DE RESPUESTA (JSON estricto):
 
 {
+  "cleanTitle": "Título corregido y completo",
+  "cleanExcerpt": "Bajada limpia y completa, sin puntos suspensivos al final",
   "summary": "<p>Párrafo principal con los hechos clave: <strong>qué pasó</strong>, cuándo, dónde y quiénes están involucrados. Incluí cifras y datos concretos si los hay.</p><p>Párrafo opcional de contexto o implicancias (solo si es relevante y aporta valor).</p>",
   "keyPoints": [
     "Dato o cifra clave mencionada",
@@ -178,6 +185,8 @@ Responde SOLO con el JSON, sin markdown ni texto adicional.`;
       }
 
       return {
+        cleanTitle: parsed.cleanTitle,
+        cleanExcerpt: parsed.cleanExcerpt,
         summary,
         keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints : [],
         success: true,
@@ -208,4 +217,88 @@ Responde SOLO con el JSON, sin markdown ni texto adicional.`;
  */
 export function isAIAvailable(): boolean {
   return !!GEMINI_API_KEY;
+}
+
+/**
+ * Check if an article is relevant using AI
+ */
+export async function checkArticleRelevanceWithAI(
+  title: string,
+  excerpt: string,
+  category: string
+): Promise<{ isRelevant: boolean; reason: string }> {
+  if (!GEMINI_API_KEY) {
+    return { isRelevant: true, reason: 'AI not available, skipping check' };
+  }
+
+  const prompt = `
+Eres el Editor en Jefe de "Rosario Finanzas", un portal estrictamente dedicado a:
+- Mercados financieros y bursátiles (Merval, Wall Street, Bonos, Acciones)
+- Economía macro y micro (Inflación, PBI, Tasas, Dólar)
+- Agronegocios y mercado de granos (Soja, Trigo, Exportaciones)
+- Criptomonedas y tecnología financiera
+- Empresas que cotizan en bolsa o grandes negocios
+
+Evalúa la siguiente noticia y determina si es RELEVANTE para el portal.
+RECHAZA (responde FALSE) si es:
+- Noticias policiales o crímenes (ej: "robo de dólares", "estafas", "narcotráfico")
+- Política partidaria sin impacto económico directo
+- Deportes, espectáculos, clima general o interés general
+- Noticias de consumo general sin análisis económico
+- Accidentes, tragedias o eventos locales sin impacto financiero
+
+TÍTULO: ${title}
+BAJADA: ${excerpt}
+CATEGORÍA: ${category}
+
+Responde ÚNICAMENTE con un JSON válido con este formato:
+{"isRelevant": true, "reason": "breve justificación"}
+`;
+
+  try {
+    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          topP: 0.9,
+          maxOutputTokens: 150,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      return { isRelevant: true, reason: 'API error during relevance check' };
+    }
+
+    const data: GeminiResponse = await response.json();
+    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!textResponse) {
+      return { isRelevant: true, reason: 'Empty response from AI' };
+    }
+
+    const cleanedJson = textResponse
+      .replace(/```json\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim();
+
+    const parsed = JSON.parse(cleanedJson);
+    
+    return {
+      isRelevant: parsed.isRelevant === true,
+      reason: parsed.reason || 'No reason provided'
+    };
+  } catch (error) {
+    console.error('[AISummarizer] Relevance check error:', error);
+    return { isRelevant: true, reason: 'Error parsing AI response' };
+  }
 }
