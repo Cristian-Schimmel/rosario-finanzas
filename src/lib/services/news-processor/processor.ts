@@ -43,11 +43,20 @@ const EXCLUSION_KEYWORDS = [
   'gastronomico', 'sommelier', 'vino tinto', 'maridaje', 'menú degustación',
   // Turismo
   'turismo', 'vacaciones', 'hotel', 'hospedaje', 'playa', 'escapada', 'all inclusive',
-  // Deportes
-  'fútbol', 'partido de', 'gol de', 'selección argentina de fútbol', 'messi',
-  'boca juniors', 'river plate', 'racing club', 'copa américa', 'mundial de fútbol',
+  // Deportes (ampliado — clubes, jugadores, técnicos, competencias)
+  'fútbol', 'futbol', 'partido de', 'gol de', 'goles', 'selección argentina de fútbol',
+  'messi', 'gallardo', 'riquelme', 'boca juniors', 'river plate', 'river y ',
+  'racing club', 'independiente', 'san lorenzo', 'vélez', 'huracán',
+  'banfield', 'lanús', 'estudiantes', 'gimnasia', 'newell', 'central',
+  'copa américa', 'mundial de fútbol', 'libertadores', 'sudamericana',
   'champions league', 'eliminatorias', 'superliga', 'liga profesional',
+  'copa de la liga', 'copa argentina', 'primera división',
   'basketball', 'básquet', 'rugby', 'tenis', 'olimpiadas', 'juegos olímpicos',
+  'entrenador', 'director técnico', 'dt ', 'monumental', 'bombonera',
+  'cancha', 'estadio', 'hinchada', 'hincha', 'ovación', 'ovacionó',
+  'triunfo por', 'derrota por', 'empate', 'penal', 'penales',
+  'transferencia de jugador', 'pase de', 'refuerzo', 'refuerzos',
+  'automovilismo', 'fórmula 1', 'f1', 'motogp', 'boxeo', 'ufc', 'mma',
   // Entretenimiento / farándula
   'farándula', 'espectáculo', 'actriz', 'actor', 'película', 'serie de tv',
   'televisión', 'netflix', 'streaming', 'celebrity', 'celebridad', 'famoso',

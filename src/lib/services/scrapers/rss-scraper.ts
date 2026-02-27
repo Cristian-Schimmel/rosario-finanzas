@@ -117,7 +117,7 @@ export const RSS_FEEDS: RSSFeedConfig[] = [
       category: 'economia',
       enabled: true,
     },
-    feedUrl: 'https://www.lanacion.com.ar/arc/outboundfeeds/rss/?outputType=xml&_website=lanacion',
+    feedUrl: 'https://www.lanacion.com.ar/arc/outboundfeeds/rss/category/economia/?outputType=xml&_website=lanacion',
     category: 'Economía',
     priority: 7,
     keywords: PRIORITY_KEYWORDS.finanzas,
