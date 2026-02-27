@@ -278,11 +278,11 @@ export async function getProcessedArticles(): Promise<ProcessedNews[]> {
   const rows = await prisma.processedNewsArticle.findMany({
     where: {
       // Do not return articles that were explicitly rejected by AI
-      NOT: {
-        processingError: {
-          startsWith: 'AI Rejected',
-        },
-      },
+      // Must use OR with null check to avoid SQL NULL comparison trap
+      OR: [
+        { processingError: null },
+        { processingError: { not: { startsWith: 'AI Rejected' } } },
+      ],
     },
     orderBy: { publishedAt: 'desc' },
   });
@@ -298,11 +298,10 @@ export async function getArticlesByCategory(category: string): Promise<Processed
   const rows = await prisma.processedNewsArticle.findMany({
     where: { 
       category: { equals: category, mode: 'insensitive' },
-      NOT: {
-        processingError: {
-          startsWith: 'AI Rejected',
-        },
-      },
+      OR: [
+        { processingError: null },
+        { processingError: { not: { startsWith: 'AI Rejected' } } },
+      ],
     },
     orderBy: { publishedAt: 'desc' },
   });
